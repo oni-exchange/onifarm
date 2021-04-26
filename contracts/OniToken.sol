@@ -1,6 +1,6 @@
 pragma solidity 0.6.12;
 
-import "@pancakeswap/pancake-swap-lib/contracts/token/BEP20/BEP20.sol";
+import "@oni-exchange/onilib/contracts/token/BEP20/BEP20.sol";
 
 // OniToken with Governance.
 contract OniToken is BEP20('ONI', 'ONI') {
