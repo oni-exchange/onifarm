@@ -1,5 +1,5 @@
 {
-  "name": "Oni-Exchange Farm",
+  "name": "@oni-exchange/farm",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
