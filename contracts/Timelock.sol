@@ -10,7 +10,7 @@
 
 pragma solidity 0.6.12;
 
-import "@oni-exchange/onilib/contracts/math/SafeMath.sol";
+import "@openzeppelin/contracts/math/SafeMath.sol";
 
 contract Timelock {
     using SafeMath for uint;
