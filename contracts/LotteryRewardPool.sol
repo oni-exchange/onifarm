@@ -1,7 +1,8 @@
 pragma solidity 0.6.12;
 
+import '@openzeppelin/contracts/access/Ownable.sol';
+
 import '@oni-exchange/onilib/contracts/token/BEP20/SafeBEP20.sol';
-import '@oni-exchange/onilib/contracts/access/Ownable.sol';
 
 import './MasterChef.sol';
 
