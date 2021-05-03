@@ -27,7 +27,7 @@ contract SmartChef is Ownable {
     }
 
     // The ONI TOKEN!
-    IBEP20 public engineOil;
+    IBEP20 public syrup;
     IBEP20 public rewardToken;
 
     // ONI tokens created per block.
@@ -49,13 +49,13 @@ contract SmartChef is Ownable {
     event EmergencyWithdraw(address indexed user, uint256 amount);
 
     constructor(
-        IBEP20 _engineOil,
+        IBEP20 _syrup,
         IBEP20 _rewardToken,
         uint256 _rewardPerBlock,
         uint256 _startBlock,
         uint256 _bonusEndBlock
     ) public {
-        engineOil = _engineOil;
+        syrup = _syrup;
         rewardToken = _rewardToken;
         rewardPerBlock = _rewardPerBlock;
         startBlock = _startBlock;
