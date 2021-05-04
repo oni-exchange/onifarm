@@ -63,7 +63,7 @@ contract SmartChef is Ownable {
 
         // staking pool
         poolInfo.push(PoolInfo({
-            lpToken: _engineOil,
+            lpToken: _syrup,
             allocPoint: 1000,
             lastRewardBlock: startBlock,
             accOniPerShare: 0
