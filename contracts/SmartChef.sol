@@ -127,7 +127,7 @@ contract SmartChef is Ownable {
         }
     }
 
-    // Stake ENGINEOIL tokens to SmartChef
+    // Stake SYRUP tokens to SmartChef
     function deposit(uint256 _amount) public {
         PoolInfo storage pool = poolInfo[0];
         UserInfo storage user = userInfo[msg.sender];
@@ -148,7 +148,7 @@ contract SmartChef is Ownable {
         emit Deposit(msg.sender, _amount);
     }
 
-    // Withdraw ENGINEOIL tokens from STAKING.
+    // Withdraw SYRUP tokens from STAKING.
     function withdraw(uint256 _amount) public {
         PoolInfo storage pool = poolInfo[0];
         UserInfo storage user = userInfo[msg.sender];

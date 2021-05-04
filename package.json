@@ -7,7 +7,7 @@
     "compile": "truffle compile --network bscTestnet",
     "test": "npx builder test",
     "coverage": "npx builder coverage",
-    "flatten": "rm -rf contracts/flattened && mkdir contracts/flattened && truffle-flattener contracts/BnbStaking.sol  >> contracts/flattened/BnbStaking.sol && truffle-flattener contracts/LotteryRewardPool.sol  >> contracts/flattened/LotteryRewardPool.sol && truffle-flattener contracts/MasterChef.sol  >> contracts/flattened/MasterChef.sol && truffle-flattener contracts/OniToken.sol  >> contracts/flattened/OniToken.sol && truffle-flattener contracts/SousChef.sol  >> contracts/flattened/SousChef.sol && truffle-flattener contracts/SyrupBar.sol  >> contracts/flattened/SyrupBar.sol && truffle-flattener contracts/Timelock.sol  >> contracts/flattened/Timelock.sol"
+    "flatten": "rm -rf contracts/flattened && mkdir contracts/flattened && truffle-flattener contracts/BnbStaking.sol  >> contracts/flattened/BnbStaking.sol && truffle-flattener contracts/LotteryRewardPool.sol  >> contracts/flattened/LotteryRewardPool.sol && truffle-flattener contracts/MasterChef.sol  >> contracts/flattened/MasterChef.sol && truffle-flattener contracts/OniToken.sol  >> contracts/flattened/OniToken.sol && truffle-flattener contracts/SousChef.sol  >> contracts/flattened/SousChef.sol && truffle-flattener contracts/SyrupBar.sol  >> contracts/flattened/SyrupBar.sol && truffle-flattener contracts/Timelock.sol  >> contracts/flattened/Timelock.sol && truffle-flattener contracts/SmartChef.sol >> contracts/flattened/SmartChef.sol"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^3.4.1",
