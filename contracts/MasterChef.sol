@@ -51,8 +51,6 @@ contract MasterChef is Ownable, ReentrancyGuard {
     OniToken public oni;
     // The SYRUP TOKEN!
     SyrupBar public syrup;
-    // Dev address.
-    address public devaddr; // TODO(IntegralTeam): consider removal of devaddr
     // ONI tokens created per block.
     uint256 public oniPerBlock;
     // Bonus muliplier for early oni makers.
@@ -106,13 +104,11 @@ contract MasterChef is Ownable, ReentrancyGuard {
     constructor(
         OniToken _oni,
         SyrupBar _syrup,
-        address _devaddr, // TODO (IntegralTeam): consider removal of devaddr
         uint256 _initialEmissionRate,
         uint256 _startBlock
     ) public {
         oni = _oni;
         syrup = _syrup;
-        devaddr = _devaddr; // TODO(IntegralTeam): consider removal of devaddr
         oniPerBlock = _initialEmissionRate;
         startBlock = _startBlock;
 
@@ -259,8 +255,6 @@ contract MasterChef is Ownable, ReentrancyGuard {
                 .mul(pool.allocPoint)
                 .div(totalAllocPoint);
 
-        // TODO(IntegralTeam): consider removal of devaddr
-        oni.mint(devaddr, oniReward.div(10));
         oni.mint(address(syrup), oniReward);
         pool.accOniPerShare =
             pool.accOniPerShare
@@ -413,13 +407,6 @@ contract MasterChef is Ownable, ReentrancyGuard {
     // Safe oni transfer function, just in case if rounding error causes pool to not have enough ONIs.
     function safeOniTransfer(address _to, uint256 _amount) internal {
         syrup.safeOniTransfer(_to, _amount);
-    }
-
-    // TODO(IntegralTeam): consider removal of devaddr
-    // Update dev address by the previous dev.
-    function dev(address _devaddr) public {
-        require(msg.sender == devaddr, "dev: wut?");
-        devaddr = _devaddr;
     }
 
     // Reduce emission rate by 3% every 14,400 blocks ~ 12hours till the emission rate is 0.5 TNDR.

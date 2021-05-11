@@ -1,13 +1,15 @@
-/node_modules/
+.idea/*
+contracts/flattened/*.sol
+
 /build/
 
 node_modules
 
 #Buidler files
+build
 cache
 artifacts
-coverage
-coverage.json
+
 
 #sensible local data
 .env

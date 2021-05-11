@@ -4,16 +4,17 @@
   "main": "index.js",
   "scripts": {
     "testrpc": "ganache-cli --gasLimit 13000000 -e 100000 --networkId 666",
-    "migrate": "truffle migrate --network bscTestnet --reset",
-    "compile": "truffle compile --network bscTestnet",
+    "migrate": "truffle migrate --network bsctestnet --reset",
+    "compile": "truffle compile --network bsctestnet",
     "test": "npx builder test",
     "coverage": "npx builder coverage",
+    "verify": "bash ./scripts/verify.sh",
     "flatten": "rm -rf contracts/flattened && mkdir contracts/flattened && truffle-flattener contracts/BnbStaking.sol  >> contracts/flattened/BnbStaking.sol && truffle-flattener contracts/LotteryRewardPool.sol  >> contracts/flattened/LotteryRewardPool.sol && truffle-flattener contracts/MasterChef.sol  >> contracts/flattened/MasterChef.sol && truffle-flattener contracts/MasterChefReferral.sol  >> contracts/flattened/MasterChefReferral.sol && truffle-flattener contracts/OniToken.sol  >> contracts/flattened/OniToken.sol && truffle-flattener contracts/SousChef.sol  >> contracts/flattened/SousChef.sol && truffle-flattener contracts/SyrupBar.sol  >> contracts/flattened/SyrupBar.sol && truffle-flattener contracts/Timelock.sol  >> contracts/flattened/Timelock.sol && truffle-flattener contracts/SmartChef.sol >> contracts/flattened/SmartChef.sol"
   },
   "dependencies": {
+    "@oni-exchange/onilib": "git://github.com/oni-exchange/onilib.git",
     "@openzeppelin/contracts": "^3.4.1",
     "@openzeppelin/test-helpers": "^0.5.6",
-    "@oni-exchange/onilib": "git://github.com/oni-exchange/onilib.git",
     "truffle": "^5.1.58",
     "truffle-flattener": "^1.4.4"
   },
@@ -23,14 +24,13 @@
     "@nomiclabs/buidler-truffle5": "^1.3.4",
     "@nomiclabs/buidler-waffle": "^2.0.0",
     "@nomiclabs/buidler-web3": "^1.3.4",
-    "@truffle/hdwallet-provider": "^1.3.0",
+    "@truffle/hdwallet-provider": "1.2.3",
     "chai": "^4.2.0",
     "dotenv": "^8.2.0",
     "ethereum-waffle": "^3.0.0",
     "ethers": "^5.0.14",
     "solidity-coverage": "^0.7.13",
-    "truffle-hdwallet-provider": "^1.0.17",
-    "truffle-plugin-verify": "^0.4.0",
+    "truffle-plugin-verify": "^0.5.7",
     "web3": "^1.3.0"
   }
 }
