@@ -12,6 +12,18 @@ const mnemonic = fs.readFileSync('../.secret').toString().trim();
 /* Load Artifacts */
 const MockBEP20 = artifacts.require('MockBEP20');
 
+/** .env file content
+DEPLOYER_ACCOUNT
+BSCSCAN_API_KEY=
+ONI_TOKEN_ADDRESS=
+SYRUP_TOKEN_ADDRESS=
+MINTER_ADDRESS=
+IFO_ADMIN_ADDRESS=
+NFT_ROLE_ADDRESS=
+POINT_ROLE_ADDRESS=
+SPECIAL_ROLE_ADDRESS=
+*/
+
 //const IFO = artifacts.require("IFO");
 //const OniProfile = artifacts.require('OniProfile');
 //const PointCenterIFO = artifacts.require('PointCenterIFO');
@@ -39,11 +51,11 @@ const config = {
 //        startBlock: '8571079', // + ~1 day
 //        endBlock: '8892171' // + ~11 days
 //    },
-//    SmartChef: {
-//        rewardPerBlock: '10',
-//        startBlock: '100',
-//        bonusEndBlock: '200'
-//    },
+    SmartChef: {
+        rewardPerBlock: '10',
+        startBlock: '100',
+        bonusEndBlock: '200'
+    },
 //    OniProfile: {
 //        NFT_ROLE_ADDRESS: process.env.NFT_ROLE_ADDRESS,
 //        POINT_ROLE_ADDRESS: process.env.POINT_ROLE_ADDRESS,
@@ -77,9 +89,47 @@ module.exports = function(deployer) {
 if (network === 'development' || network === 'test' || network === 'soliditycoverage' || network=='otherhost') {
     // do nothing for now
   } else if (network === 'bsctestnet') { // binance testnet
-    // hard-coded onitoken address deployed previously
-    const oniTokenAddress = process.env.ONI_TOKEN_ADDRESS;
-    const syrupTokenAddress = process.env.SYRUP_TOKEN_ADDRESS;
+    // deploy OniToken
+    await deployer.deploy(OniToken, { from: process.env.DEPLOYER_ACCOUNT });
+    const OniTokenInstance = await OniToken.deployed();
+    // deploy SyrupBar
+    await deployer.deploy(SyrupBar, OniTokenInstance.address, { from: process.env.DEPLOYER_ACCOUNT });
+    const SyrupBarInstance = await SyrupBar.deployed();
+
+    // preserve usage hard-coded addresses as an option
+    const oniTokenAddress = OniTokenInstance.address;   //process.env.ONI_TOKEN_ADDRESS;
+    const syrupTokenAddress = SyrupBarInstance.address; //process.env.SYRUP_TOKEN_ADDRESS;
+
+    // deploy MasterChef
+    await deployer.deploy(MasterChef,
+        OniTokenInstance.address,
+        SyrupBarInstance.address,
+        process.env.DEPLOYER_ACCOUNT,
+        config.MasterChef.oniPerBlock,
+        config.MasterChef.startBlock,
+        { from: process.env.DEPLOYER_ACCOUNT }
+        );
+    const MasterChefInstance = await MasterChef.deployed();
+
+    // chef owns oni & syrup tokens
+    // TODO (IntegralTeam): need to consolidate owners
+    await OniTokenInstance.transferOwnership(MasterChefInstance.address, { from: process.env.DEPLOYER_ACCOUNT });
+    await SyrupBarInstance.transferOwnership(MasterChefInstance.address, { from: process.env.DEPLOYER_ACCOUNT });
+
+//  alternatively deploy SmartChef
+
+//    await deployer.deploy(SmartChef,
+//        SyrupBarInstance.address,
+//        OniTokenInstance.address,
+//        config.SmartChef.rewardPerBlock,
+//        config.SmartChef.startBlock,
+//        config.SmartChef.bonusEndBlock,
+//        { from: process.env.DEPLOYER_ACCOUNT }
+//        );
+//    const SmartChefInstance = await SmartChef.deployed();
+//    await OniTokenInstance.transferOwnership(SmartChefInstance.address, { from: process.env.DEPLOYER_ACCOUNT });
+//    await SyrupBarInstance.transferOwnership(SmartChefInstance.address, { from: process.env.DEPLOYER_ACCOUNT });
+
 
   } else if (network === 'bsc') {
     // do nothing for now
