@@ -1,7 +1,10 @@
-pragma solidity 0.6.12;
+// SPDX-License-Identifier: MIT
 
-import '@openzeppelin/contracts/math/SafeMath.sol';
-import '@openzeppelin/contracts/access/Ownable.sol';
+pragma solidity ^0.6.12;
+
+import "@openzeppelin/contracts/math/SafeMath.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import '@oni-exchange/onilib/contracts/token/BEP20/IBEP20.sol';
 import '@oni-exchange/onilib/contracts/token/BEP20/SafeBEP20.sol';
@@ -11,26 +14,10 @@ import "./SyrupBar.sol";
 
 // import "@nomiclabs/buidler/console.sol";
 
-interface IMigratorChef {
-    // Take the current LP token address and return the new LP token address.
-    // Migrator should have full access to the caller's LP token.
-    // Return the new LP token address.
-    //
-    // XXX Migrator must have allowance access to OniSwap LP tokens.
-    // OniSwap must mint EXACTLY the same amount of OniSwap LP tokens or
-    // else something bad will happen. Traditional OniSwap does not
-    // do that so be careful!
-    function migrate(IBEP20 token) external returns (IBEP20);
-}
+// MasterChef is the master of OniExchange Token (ONI) and SyrupBar.
+//
 
-// MasterChef is the master of Oni. He can make Oni and he is a fair guy.
-//
-// Note that it's ownable and the owner wields tremendous power. The ownership
-// will be transferred to a governance smart contract once ONI is sufficiently
-// distributed and the community can show to govern itself.
-//
-// Have fun reading it. Hopefully it's bug-free. God bless.
-contract MasterChef is Ownable {
+contract MasterChef is Ownable, ReentrancyGuard {
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
 
@@ -54,7 +41,8 @@ contract MasterChef is Ownable {
     // Info of each pool.
     struct PoolInfo {
         IBEP20 lpToken;           // Address of LP token contract.
-        uint256 allocPoint;       // How many allocation points assigned to this pool. ONIs to distribute per block.
+        uint256 allocPoint;       // How many allocation points assigned to this pool.
+                                  // ONIs to distribute per block.
         uint256 lastRewardBlock;  // Last block number that ONIs distribution occurs.
         uint256 accOniPerShare; // Accumulated ONIs per share, times 1e12. See below.
     }
@@ -64,13 +52,11 @@ contract MasterChef is Ownable {
     // The SYRUP TOKEN!
     SyrupBar public syrup;
     // Dev address.
-    address public devaddr;
+    address public devaddr; // TODO(IntegralTeam): consider removal of devaddr
     // ONI tokens created per block.
     uint256 public oniPerBlock;
     // Bonus muliplier for early oni makers.
     uint256 public BONUS_MULTIPLIER = 1;
-    // The migrator contract. It has a lot of power. Can only be set through governance (owner).
-    IMigratorChef public migrator;
 
     // Info of each pool.
     PoolInfo[] public poolInfo;
@@ -81,21 +67,53 @@ contract MasterChef is Ownable {
     // The block number when ONI mining starts.
     uint256 public startBlock;
 
+    // ============ REFERRAL DATA START ============
+    // Referral Bonus in basis points. Initially set to 2%
+    uint256 public refBonusBP = 200;
+    // Max referral commission rate: 20%.
+    uint16 public constant MAXIMUM_REFERRAL_BP = 2000;
+    // Referral Mapping
+    mapping(address => address) public referrers; // account_address -> referrer_address
+    mapping(address => uint256) public referredCount; // referrer_address -> num_of_referred
+    // Pool Exists Mapper
+    mapping(IBEP20 => bool) public poolExistence;
+    // Pool ID Tracker Mapper
+    mapping(IBEP20 => uint256) public poolIdForLpAddress;
+
+    // Initial emission rate: 1 ONI per block.
+    uint256 public constant INITIAL_EMISSION_RATE = 1 ether;
+    // Minimum emission rate: 0.5 ONI per block.
+    uint256 public constant MINIMUM_EMISSION_RATE = 500 finney;
+    // Reduce emission every 14,400 blocks ~ 12 hours.
+    uint256 public constant EMISSION_REDUCTION_PERIOD_BLOCKS = 14400;
+    // Emission reduction rate per period in basis points: 3%.
+    uint256 public constant EMISSION_REDUCTION_RATE_PER_PERIOD = 300;
+    // Last reduction period index
+    uint256 public lastReductionPeriodIndex = 0;
+    // ============ REFERRAL DATA END  ============
+
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
     event EmergencyWithdraw(address indexed user, uint256 indexed pid, uint256 amount);
 
+    // ============ REFERRAL EVENTS START ============
+    event Referral(address indexed _user, address indexed _referrer);
+    event ReferralPaid(address indexed _user, address indexed _userTo, uint256 _reward);
+    event ReferralBonusBpChanged(uint256 _oldBp, uint256 _newBp);
+    event EmissionRateUpdated(address indexed caller, uint256 previousAmount, uint256 newAmount);
+    // ============ REFERRAL EVENTS END ============
+
     constructor(
         OniToken _oni,
         SyrupBar _syrup,
-        address _devaddr,
-        uint256 _oniPerBlock,
+        address _devaddr, // TODO (IntegralTeam): consider removal of devaddr
+        uint256 _initialEmissionRate,
         uint256 _startBlock
     ) public {
         oni = _oni;
         syrup = _syrup;
-        devaddr = _devaddr;
-        oniPerBlock = _oniPerBlock;
+        devaddr = _devaddr; // TODO(IntegralTeam): consider removal of devaddr
+        oniPerBlock = _initialEmissionRate;
         startBlock = _startBlock;
 
         // staking pool
@@ -106,6 +124,7 @@ contract MasterChef is Ownable {
             accOniPerShare: 0
         }));
 
+        // TODO (IntegralTeam): analyse why this value is assigned
         totalAllocPoint = 1000;
 
     }
@@ -114,24 +133,45 @@ contract MasterChef is Ownable {
         BONUS_MULTIPLIER = multiplierNumber;
     }
 
+    // Get number of pools added.
     function poolLength() external view returns (uint256) {
         return poolInfo.length;
     }
 
+    function getPoolIdForLpToken(IBEP20 _lpToken) external view returns (uint256) {
+        require(poolExistence[_lpToken] != false, "getPoolIdForLpToken: do not exist");
+        return poolIdForLpAddress[_lpToken];
+    }
+
+    // Modifier to check Duplicate pools
+    modifier nonDuplicated(IBEP20 _lpToken) {
+        require(poolExistence[_lpToken] == false, "nonDuplicated: duplicated");
+        _;
+    }
+
     // Add a new lp to the pool. Can only be called by the owner.
     // XXX DO NOT add the same LP token more than once. Rewards will be messed up if you do.
-    function add(uint256 _allocPoint, IBEP20 _lpToken, bool _withUpdate) public onlyOwner {
+    function add(uint256 _allocPoint, IBEP20 _lpToken, bool _withUpdate)
+        public onlyOwner
+        // TODO(IntegralTeam): analyse the necessity of the nonDuplicated() modifier
+        //nonDuplicated(_lpToken)
+    {
         if (_withUpdate) {
             massUpdatePools();
         }
         uint256 lastRewardBlock = block.number > startBlock ? block.number : startBlock;
         totalAllocPoint = totalAllocPoint.add(_allocPoint);
-        poolInfo.push(PoolInfo({
-            lpToken: _lpToken,
-            allocPoint: _allocPoint,
-            lastRewardBlock: lastRewardBlock,
-            accOniPerShare: 0
-        }));
+        poolExistence[_lpToken] = true;
+        poolInfo.push(
+            PoolInfo({
+                lpToken: _lpToken,
+                allocPoint: _allocPoint,
+                lastRewardBlock: lastRewardBlock,
+                accOniPerShare: 0
+            })
+        );
+        poolIdForLpAddress[_lpToken] = poolInfo.length - 1;
+
         updateStakingPool();
     }
 
@@ -161,38 +201,34 @@ contract MasterChef is Ownable {
         }
     }
 
-    // Set the migrator contract. Can only be called by the owner.
-    function setMigrator(IMigratorChef _migrator) public onlyOwner {
-        migrator = _migrator;
-    }
-
-    // Migrate lp token to another lp contract. Can be called by anyone. We trust that migrator contract is good.
-    function migrate(uint256 _pid) public {
-        require(address(migrator) != address(0), "migrate: no migrator");
-        PoolInfo storage pool = poolInfo[_pid];
-        IBEP20 lpToken = pool.lpToken;
-        uint256 bal = lpToken.balanceOf(address(this));
-        lpToken.safeApprove(address(migrator), bal);
-        IBEP20 newLpToken = migrator.migrate(lpToken);
-        require(bal == newLpToken.balanceOf(address(this)), "migrate: bad");
-        pool.lpToken = newLpToken;
-    }
-
     // Return reward multiplier over the given _from to _to block.
-    function getMultiplier(uint256 _from, uint256 _to) public view returns (uint256) {
+    function getMultiplier(uint256 _from, uint256 _to)
+        public
+        view
+        returns (uint256)
+    {
         return _to.sub(_from).mul(BONUS_MULTIPLIER);
     }
 
     // View function to see pending ONIs on frontend.
-    function pendingOni(uint256 _pid, address _user) external view returns (uint256) {
+    function pendingOni(uint256 _pid, address _user)
+        external
+        view
+        returns (uint256)
+    {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][_user];
         uint256 accOniPerShare = pool.accOniPerShare;
         uint256 lpSupply = pool.lpToken.balanceOf(address(this));
         if (block.number > pool.lastRewardBlock && lpSupply != 0) {
             uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
-            uint256 oniReward = multiplier.mul(oniPerBlock).mul(pool.allocPoint).div(totalAllocPoint);
-            accOniPerShare = accOniPerShare.add(oniReward.mul(1e12).div(lpSupply));
+            uint256 oniReward = multiplier
+                .mul(oniPerBlock)
+                .mul(pool.allocPoint)
+                .div(totalAllocPoint);
+            accOniPerShare = accOniPerShare.add(
+                oniReward.mul(1e12).div(lpSupply)
+            );
         }
         return user.amount.mul(accOniPerShare).div(1e12).sub(user.rewardDebt);
     }
@@ -204,7 +240,6 @@ contract MasterChef is Ownable {
             updatePool(pid);
         }
     }
-
 
     // Update reward variables of the given pool to be up-to-date.
     function updatePool(uint256 _pid) public {
@@ -218,49 +253,105 @@ contract MasterChef is Ownable {
             return;
         }
         uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
-        uint256 oniReward = multiplier.mul(oniPerBlock).mul(pool.allocPoint).div(totalAllocPoint);
+        uint256 oniReward =
+            multiplier
+                .mul(oniPerBlock)
+                .mul(pool.allocPoint)
+                .div(totalAllocPoint);
+
+        // TODO(IntegralTeam): consider removal of devaddr
         oni.mint(devaddr, oniReward.div(10));
         oni.mint(address(syrup), oniReward);
-        pool.accOniPerShare = pool.accOniPerShare.add(oniReward.mul(1e12).div(lpSupply));
+        pool.accOniPerShare =
+            pool.accOniPerShare
+                .add(oniReward
+                .mul(1e12)
+                .div(lpSupply));
         pool.lastRewardBlock = block.number;
     }
 
     // Deposit LP tokens to MasterChef for ONI allocation.
-    function deposit(uint256 _pid, uint256 _amount) public {
-
+    function deposit(uint256 _pid, uint256 _amount) public nonReentrant {
         require (_pid != 0, 'deposit ONI by staking');
 
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         updatePool(_pid);
         if (user.amount > 0) {
-            uint256 pending = user.amount.mul(pool.accOniPerShare).div(1e12).sub(user.rewardDebt);
-            if(pending > 0) {
+            uint256 pending =
+                user.amount
+                    .mul(pool.accOniPerShare)
+                    .div(1e12)
+                    .sub(user.rewardDebt);
+            if (pending > 0) {
                 safeOniTransfer(msg.sender, pending);
             }
         }
         if (_amount > 0) {
-            pool.lpToken.safeTransferFrom(address(msg.sender), address(this), _amount);
+            pool.lpToken.safeTransferFrom(
+                address(msg.sender),
+                address(this),
+                _amount
+            );
             user.amount = user.amount.add(_amount);
         }
         user.rewardDebt = user.amount.mul(pool.accOniPerShare).div(1e12);
         emit Deposit(msg.sender, _pid, _amount);
     }
 
-    // Withdraw LP tokens from MasterChef.
-    function withdraw(uint256 _pid, uint256 _amount) public {
+    // Deposit LP tokens to MasterChef for TNDR allocation with referral.
+    function depositReferred(
+        uint256 _pid,
+        uint256 _amount,
+        address _referrer
+    ) public nonReentrant
+    {
+        require(_referrer == address(_referrer), "deposit: Invalid referrer address");
+        PoolInfo storage pool = poolInfo[_pid];
+        UserInfo storage user = userInfo[_pid][msg.sender];
+        updatePool(_pid);
+        if (user.amount > 0) {
+            uint256 pending =
+                user.amount
+                    .mul(pool.accOniPerShare)
+                    .div(1e12)
+                    .sub(user.rewardDebt);
+            if (pending > 0) {
+                safeOniTransfer(msg.sender, pending);
+                payReferralCommission(msg.sender, pending);
+            }
+        }
+        if (_amount > 0) {
+            setReferral(msg.sender, _referrer);
+            pool.lpToken.safeTransferFrom(
+                address(msg.sender),
+                address(this),
+                _amount
+            );
+            user.amount = user.amount.add(_amount);
+        }
 
+        user.rewardDebt = user.amount.mul(pool.accOniPerShare).div(1e12);
+        emit Deposit(msg.sender, _pid, _amount);
+    }
+
+    // Withdraw LP tokens from MasterChef.
+    function withdraw(uint256 _pid, uint256 _amount) public nonReentrant {
         require (_pid != 0, 'withdraw Oni by unstaking');
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         require(user.amount >= _amount, "withdraw: not good");
-
         updatePool(_pid);
-        uint256 pending = user.amount.mul(pool.accOniPerShare).div(1e12).sub(user.rewardDebt);
+        uint256 pending =
+            user.amount
+                .mul(pool.accOniPerShare)
+                .div(1e12)
+                .sub(user.rewardDebt);
         if(pending > 0) {
             safeOniTransfer(msg.sender, pending);
+            payReferralCommission(msg.sender, pending);
         }
-        if(_amount > 0) {
+        if (_amount > 0) {
             user.amount = user.amount.sub(_amount);
             pool.lpToken.safeTransfer(address(msg.sender), _amount);
         }
@@ -310,7 +401,7 @@ contract MasterChef is Ownable {
     }
 
     // Withdraw without caring about rewards. EMERGENCY ONLY.
-    function emergencyWithdraw(uint256 _pid) public {
+    function emergencyWithdraw(uint256 _pid) public nonReentrant {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         pool.lpToken.safeTransfer(address(msg.sender), user.amount);
@@ -324,9 +415,74 @@ contract MasterChef is Ownable {
         syrup.safeOniTransfer(_to, _amount);
     }
 
+    // TODO(IntegralTeam): consider removal of devaddr
     // Update dev address by the previous dev.
     function dev(address _devaddr) public {
         require(msg.sender == devaddr, "dev: wut?");
         devaddr = _devaddr;
     }
+
+    // Reduce emission rate by 3% every 14,400 blocks ~ 12hours till the emission rate is 0.5 TNDR.
+    // This function can be called publicly.
+    function updateEmissionRate() public {
+        require(block.number > startBlock, "updateEmissionRate: Can only be called after mining starts");
+        require(oniPerBlock > MINIMUM_EMISSION_RATE, "updateEmissionRate: Emission rate has reached the minimum threshold");
+
+        uint256 currentIndex = block.number.sub(startBlock).div(EMISSION_REDUCTION_PERIOD_BLOCKS);
+        if (currentIndex <= lastReductionPeriodIndex) {
+            return;
+        }
+
+        uint256 newEmissionRate = oniPerBlock;
+        for (uint256 index = lastReductionPeriodIndex; index < currentIndex; ++index) {
+            newEmissionRate = newEmissionRate.mul(1e4 - EMISSION_REDUCTION_RATE_PER_PERIOD).div(1e4);
+        }
+
+        newEmissionRate = newEmissionRate < MINIMUM_EMISSION_RATE ? MINIMUM_EMISSION_RATE : newEmissionRate;
+        if (newEmissionRate >= oniPerBlock) {
+            return;
+        }
+
+        massUpdatePools();
+        lastReductionPeriodIndex = currentIndex;
+        uint256 previousEmissionRate = oniPerBlock;
+        oniPerBlock = newEmissionRate;
+        emit EmissionRateUpdated(msg.sender, previousEmissionRate, newEmissionRate);
+    }
+
+    // Set Referral Address for a user
+    function setReferral(address _user, address _referrer) internal {
+        if (_referrer == address(_referrer) && referrers[_user] == address(0) && _referrer != address(0) && _referrer != _user) {
+            referrers[_user] = _referrer;
+            referredCount[_referrer] += 1;
+            emit Referral(_user, _referrer);
+        }
+    }
+
+    // Get Referral Address for a Account
+    function getReferral(address _user) public view returns (address) {
+        return referrers[_user];
+    }
+
+    // Pay referral commission to the referrer who referred this user.
+    function payReferralCommission(address _user, uint256 _pending) internal {
+        address referrer = getReferral(_user);
+        if (referrer != address(0) && referrer != _user && refBonusBP > 0) {
+            uint256 refBonusEarned = _pending.mul(refBonusBP).div(10000);
+            oni.mint(referrer, refBonusEarned);
+            emit ReferralPaid(_user, referrer, refBonusEarned);
+        }
+    }
+
+    // Referral Bonus in basis points.
+    // Initially set to 2%, this this the ability to increase or decrease the Bonus percentage based on
+    // community voting and feedback.
+    function updateReferralBonusBp(uint256 _newRefBonusBp) public onlyOwner {
+        require(_newRefBonusBp <= MAXIMUM_REFERRAL_BP, "updateRefBonusPercent: invalid referral bonus basis points");
+        require(_newRefBonusBp != refBonusBP, "updateRefBonusPercent: same bonus bp set");
+        uint256 previousRefBonusBP = refBonusBP;
+        refBonusBP = _newRefBonusBp;
+        emit ReferralBonusBpChanged(previousRefBonusBP, _newRefBonusBp);
+    }
+
 }

@@ -1,4 +1,11 @@
-const { expectRevert, time } = require('@openzeppelin/test-helpers');
+const {
+    BN,
+    constants,
+    expectEvent,
+    expectRevert,
+    time
+} = require('@openzeppelin/test-helpers');
+
 const OniToken = artifacts.require('OniToken');
 const SyrupBar = artifacts.require('SyrupBar');
 const MasterChef = artifacts.require('MasterChef');
@@ -107,7 +114,7 @@ contract('MasterChef', ([alice, bob, carol, dev, minter]) => {
     });
 
 
-    it('updaate multiplier', async () => {
+    it('update multiplier', async () => {
       await this.chef.add('1000', this.lp1.address, true, { from: minter });
       await this.chef.add('1000', this.lp2.address, true, { from: minter });
       await this.chef.add('1000', this.lp3.address, true, { from: minter });
@@ -159,4 +166,40 @@ contract('MasterChef', ([alice, bob, carol, dev, minter]) => {
         await this.chef.dev(alice, { from: bob });
         assert.equal((await this.chef.devaddr()).valueOf(), alice);
     })
+
+    it('deposit referred', async () => {
+      await this.chef.add('1000', this.lp1.address, true, { from: minter });
+      await this.chef.add('1000', this.lp2.address, true, { from: minter });
+      await this.chef.add('1000', this.lp3.address, true, { from: minter });
+
+      await this.lp1.approve(this.chef.address, '100', { from: alice });
+
+    {
+        const { tx } = await this.chef.depositReferred(1, '20', bob, { from: alice }); // bob is alice's referral
+        await expectEvent.inTransaction(
+            tx,
+            this.chef,
+            'Referral',
+            { _user: alice, _referrer: bob },
+        );
+    }
+
+    const referral = await this.chef.getReferral(alice);
+    assert.equal(referral, bob);
+    await time.advanceBlock();
+
+    {
+        console.log('pending oni = ', await this.chef.pendingOni(1, alice));
+
+        const { tx } = await this.chef.withdraw(1, '20', { from: alice });
+        await expectEvent.inTransaction(
+          tx,
+          this.chef,
+          'ReferralPaid',
+          { _user: alice, _userTo: bob, _reward: '0.4' },
+      );
+    }
+
+    });
+
 });
