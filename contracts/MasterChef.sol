@@ -10,12 +10,6 @@ import '@oni-exchange/onilib/contracts/token/BEP20/IBEP20.sol';
 import '@oni-exchange/onilib/contracts/token/BEP20/SafeBEP20.sol';
 
 import "./OniToken.sol";
-import "./SyrupBar.sol";
-
-// import "@nomiclabs/buidler/console.sol";
-
-// MasterChef is the master of OniExchange Token (ONI) and SyrupBar.
-//
 
 contract MasterChef is Ownable, ReentrancyGuard {
     using SafeMath for uint256;
@@ -23,7 +17,7 @@ contract MasterChef is Ownable, ReentrancyGuard {
 
     // Info of each user.
     struct UserInfo {
-        uint256 amount;     // How many LP tokens the user has provided.
+        uint256 amount; // How many LP tokens the user has provided.
         uint256 rewardDebt; // Reward debt. See explanation below.
         //
         // We do some fancy math here. Basically, any point in time, the amount of ONIs
@@ -49,12 +43,8 @@ contract MasterChef is Ownable, ReentrancyGuard {
 
     // The ONI TOKEN!
     OniToken public oni;
-    // The SYRUP TOKEN!
-    SyrupBar public syrup;
     // ONI tokens created per block.
     uint256 public oniPerBlock;
-    // Bonus muliplier for early oni makers.
-    uint256 public BONUS_MULTIPLIER = 1;
 
     // Info of each pool.
     PoolInfo[] public poolInfo;
@@ -64,8 +54,6 @@ contract MasterChef is Ownable, ReentrancyGuard {
     uint256 public totalAllocPoint = 0;
     // The block number when ONI mining starts.
     uint256 public startBlock;
-
-    // ============ REFERRAL DATA START ============
     // Referral Bonus in basis points. Initially set to 2%
     uint256 public refBonusBP = 200;
     // Max referral commission rate: 20%.
@@ -75,11 +63,7 @@ contract MasterChef is Ownable, ReentrancyGuard {
     mapping(address => uint256) public referredCount; // referrer_address -> num_of_referred
     // Pool Exists Mapper
     mapping(IBEP20 => bool) public poolExistence;
-    // Pool ID Tracker Mapper
-    mapping(IBEP20 => uint256) public poolIdForLpAddress;
 
-    // Initial emission rate: 1 ONI per block.
-    uint256 public constant INITIAL_EMISSION_RATE = 1 ether;
     // Minimum emission rate: 0.5 ONI per block.
     uint256 public constant MINIMUM_EMISSION_RATE = 500 finney;
     // Reduce emission every 14,400 blocks ~ 12 hours.
@@ -88,45 +72,24 @@ contract MasterChef is Ownable, ReentrancyGuard {
     uint256 public constant EMISSION_REDUCTION_RATE_PER_PERIOD = 300;
     // Last reduction period index
     uint256 public lastReductionPeriodIndex = 0;
-    // ============ REFERRAL DATA END  ============
 
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
     event EmergencyWithdraw(address indexed user, uint256 indexed pid, uint256 amount);
 
-    // ============ REFERRAL EVENTS START ============
     event Referral(address indexed _user, address indexed _referrer);
     event ReferralPaid(address indexed _user, address indexed _userTo, uint256 _reward);
     event ReferralBonusBpChanged(uint256 _oldBp, uint256 _newBp);
     event EmissionRateUpdated(address indexed caller, uint256 previousAmount, uint256 newAmount);
-    // ============ REFERRAL EVENTS END ============
 
     constructor(
         OniToken _oni,
-        SyrupBar _syrup,
         uint256 _initialEmissionRate,
         uint256 _startBlock
     ) public {
         oni = _oni;
-        syrup = _syrup;
         oniPerBlock = _initialEmissionRate;
         startBlock = _startBlock;
-
-        // staking pool
-        poolInfo.push(PoolInfo({
-            lpToken: _oni,
-            allocPoint: 1000,
-            lastRewardBlock: startBlock,
-            accOniPerShare: 0
-        }));
-
-        // TODO (IntegralTeam): analyse why this value is assigned
-        totalAllocPoint = 1000;
-
-    }
-
-    function updateMultiplier(uint256 multiplierNumber) public onlyOwner {
-        BONUS_MULTIPLIER = multiplierNumber;
     }
 
     // Get number of pools added.
@@ -134,24 +97,12 @@ contract MasterChef is Ownable, ReentrancyGuard {
         return poolInfo.length;
     }
 
-    function getPoolIdForLpToken(IBEP20 _lpToken) external view returns (uint256) {
-        require(poolExistence[_lpToken] != false, "getPoolIdForLpToken: do not exist");
-        return poolIdForLpAddress[_lpToken];
-    }
-
-    // Modifier to check Duplicate pools
-    modifier nonDuplicated(IBEP20 _lpToken) {
-        require(poolExistence[_lpToken] == false, "nonDuplicated: duplicated");
-        _;
-    }
-
     // Add a new lp to the pool. Can only be called by the owner.
     // XXX DO NOT add the same LP token more than once. Rewards will be messed up if you do.
     function add(uint256 _allocPoint, IBEP20 _lpToken, bool _withUpdate)
         public onlyOwner
-        // TODO(IntegralTeam): analyse the necessity of the nonDuplicated() modifier
-        //nonDuplicated(_lpToken)
     {
+        require(!poolExistence[_lpToken], "MS: duplicated");
         if (_withUpdate) {
             massUpdatePools();
         }
@@ -166,9 +117,6 @@ contract MasterChef is Ownable, ReentrancyGuard {
                 accOniPerShare: 0
             })
         );
-        poolIdForLpAddress[_lpToken] = poolInfo.length - 1;
-
-        updateStakingPool();
     }
 
     // Update the given pool's ONI allocation point. Can only be called by the owner.
@@ -176,34 +124,8 @@ contract MasterChef is Ownable, ReentrancyGuard {
         if (_withUpdate) {
             massUpdatePools();
         }
-        uint256 prevAllocPoint = poolInfo[_pid].allocPoint;
+        totalAllocPoint = totalAllocPoint.sub(poolInfo[_pid].allocPoint).add(_allocPoint);
         poolInfo[_pid].allocPoint = _allocPoint;
-        if (prevAllocPoint != _allocPoint) {
-            totalAllocPoint = totalAllocPoint.sub(prevAllocPoint).add(_allocPoint);
-            updateStakingPool();
-        }
-    }
-
-    function updateStakingPool() internal {
-        uint256 length = poolInfo.length;
-        uint256 points = 0;
-        for (uint256 pid = 1; pid < length; ++pid) {
-            points = points.add(poolInfo[pid].allocPoint);
-        }
-        if (points != 0) {
-            points = points.div(3);
-            totalAllocPoint = totalAllocPoint.sub(poolInfo[0].allocPoint).add(points);
-            poolInfo[0].allocPoint = points;
-        }
-    }
-
-    // Return reward multiplier over the given _from to _to block.
-    function getMultiplier(uint256 _from, uint256 _to)
-        public
-        view
-        returns (uint256)
-    {
-        return _to.sub(_from).mul(BONUS_MULTIPLIER);
     }
 
     // View function to see pending ONIs on frontend.
@@ -217,7 +139,7 @@ contract MasterChef is Ownable, ReentrancyGuard {
         uint256 accOniPerShare = pool.accOniPerShare;
         uint256 lpSupply = pool.lpToken.balanceOf(address(this));
         if (block.number > pool.lastRewardBlock && lpSupply != 0) {
-            uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
+            uint256 multiplier = (block.number).sub(pool.lastRewardBlock);
             uint256 oniReward = multiplier
                 .mul(oniPerBlock)
                 .mul(pool.allocPoint)
@@ -244,18 +166,18 @@ contract MasterChef is Ownable, ReentrancyGuard {
             return;
         }
         uint256 lpSupply = pool.lpToken.balanceOf(address(this));
-        if (lpSupply == 0) {
+        if (lpSupply == 0 || pool.allocPoint == 0) {
             pool.lastRewardBlock = block.number;
             return;
         }
-        uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
+        uint256 multiplier = (block.number).sub(pool.lastRewardBlock);
         uint256 oniReward =
             multiplier
                 .mul(oniPerBlock)
                 .mul(pool.allocPoint)
                 .div(totalAllocPoint);
 
-        oni.mint(address(syrup), oniReward);
+        oni.mint(address(this), oniReward);
         pool.accOniPerShare =
             pool.accOniPerShare
                 .add(oniReward
@@ -266,8 +188,6 @@ contract MasterChef is Ownable, ReentrancyGuard {
 
     // Deposit LP tokens to MasterChef for ONI allocation.
     function deposit(uint256 _pid, uint256 _amount) public nonReentrant {
-        require (_pid != 0, 'deposit ONI by staking');
-
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         updatePool(_pid);
@@ -300,7 +220,7 @@ contract MasterChef is Ownable, ReentrancyGuard {
         address _referrer
     ) public nonReentrant
     {
-        require(_referrer == address(_referrer), "deposit: Invalid referrer address");
+        require(msg.sender != address(_referrer), "MS: Invalid referrer address");
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         updatePool(_pid);
@@ -331,10 +251,9 @@ contract MasterChef is Ownable, ReentrancyGuard {
 
     // Withdraw LP tokens from MasterChef.
     function withdraw(uint256 _pid, uint256 _amount) public nonReentrant {
-        require (_pid != 0, 'withdraw Oni by unstaking');
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
-        require(user.amount >= _amount, "withdraw: not good");
+        require(user.amount >= _amount, "MS: not good");
         updatePool(_pid);
         uint256 pending =
             user.amount
@@ -353,47 +272,6 @@ contract MasterChef is Ownable, ReentrancyGuard {
         emit Withdraw(msg.sender, _pid, _amount);
     }
 
-    // Stake ONI tokens to MasterChef
-    function enterStaking(uint256 _amount) public {
-        PoolInfo storage pool = poolInfo[0];
-        UserInfo storage user = userInfo[0][msg.sender];
-        updatePool(0);
-        if (user.amount > 0) {
-            uint256 pending = user.amount.mul(pool.accOniPerShare).div(1e12).sub(user.rewardDebt);
-            if(pending > 0) {
-                safeOniTransfer(msg.sender, pending);
-            }
-        }
-        if(_amount > 0) {
-            pool.lpToken.safeTransferFrom(address(msg.sender), address(this), _amount);
-            user.amount = user.amount.add(_amount);
-        }
-        user.rewardDebt = user.amount.mul(pool.accOniPerShare).div(1e12);
-
-        syrup.mint(msg.sender, _amount);
-        emit Deposit(msg.sender, 0, _amount);
-    }
-
-    // Withdraw ONI tokens from STAKING.
-    function leaveStaking(uint256 _amount) public {
-        PoolInfo storage pool = poolInfo[0];
-        UserInfo storage user = userInfo[0][msg.sender];
-        require(user.amount >= _amount, "withdraw: not good");
-        updatePool(0);
-        uint256 pending = user.amount.mul(pool.accOniPerShare).div(1e12).sub(user.rewardDebt);
-        if(pending > 0) {
-            safeOniTransfer(msg.sender, pending);
-        }
-        if(_amount > 0) {
-            user.amount = user.amount.sub(_amount);
-            pool.lpToken.safeTransfer(address(msg.sender), _amount);
-        }
-        user.rewardDebt = user.amount.mul(pool.accOniPerShare).div(1e12);
-
-        syrup.burn(msg.sender, _amount);
-        emit Withdraw(msg.sender, 0, _amount);
-    }
-
     // Withdraw without caring about rewards. EMERGENCY ONLY.
     function emergencyWithdraw(uint256 _pid) public nonReentrant {
         PoolInfo storage pool = poolInfo[_pid];
@@ -406,14 +284,19 @@ contract MasterChef is Ownable, ReentrancyGuard {
 
     // Safe oni transfer function, just in case if rounding error causes pool to not have enough ONIs.
     function safeOniTransfer(address _to, uint256 _amount) internal {
-        syrup.safeOniTransfer(_to, _amount);
+        uint256 oniBal = oni.balanceOf(address(this));
+        if (_amount > oniBal) {
+            oni.transfer(_to, oniBal);
+        } else {
+            oni.transfer(_to, _amount);
+        }
     }
 
     // Reduce emission rate by 3% every 14,400 blocks ~ 12hours till the emission rate is 0.5 TNDR.
     // This function can be called publicly.
     function updateEmissionRate() public {
-        require(block.number > startBlock, "updateEmissionRate: Can only be called after mining starts");
-        require(oniPerBlock > MINIMUM_EMISSION_RATE, "updateEmissionRate: Emission rate has reached the minimum threshold");
+        require(block.number > startBlock, "MS: block.number > startBlock");
+        require(oniPerBlock > MINIMUM_EMISSION_RATE, "MS: oniPerBlock > MINIMUM_EMISSION_RATE");
 
         uint256 currentIndex = block.number.sub(startBlock).div(EMISSION_REDUCTION_PERIOD_BLOCKS);
         if (currentIndex <= lastReductionPeriodIndex) {
@@ -465,8 +348,8 @@ contract MasterChef is Ownable, ReentrancyGuard {
     // Initially set to 2%, this this the ability to increase or decrease the Bonus percentage based on
     // community voting and feedback.
     function updateReferralBonusBp(uint256 _newRefBonusBp) public onlyOwner {
-        require(_newRefBonusBp <= MAXIMUM_REFERRAL_BP, "updateRefBonusPercent: invalid referral bonus basis points");
-        require(_newRefBonusBp != refBonusBP, "updateRefBonusPercent: same bonus bp set");
+        require(_newRefBonusBp <= MAXIMUM_REFERRAL_BP, "MS: invalid referral bonus basis points");
+        require(_newRefBonusBp != refBonusBP, "MS: same bonus bp set");
         uint256 previousRefBonusBP = refBonusBP;
         refBonusBP = _newRefBonusBp;
         emit ReferralBonusBpChanged(previousRefBonusBP, _newRefBonusBp);

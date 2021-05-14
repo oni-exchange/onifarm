@@ -7,14 +7,13 @@ const Timelock = artifacts.require('Timelock');
 
 const config = {
     MasterChef: {
-        oniPerBlock: '1000',
-        dev: process.env.DEPLOYER_ACCOUNT,
-        startBlock: 8620481
+        oniPerBlock: '10000000000000000000', // 10 oni
+        startBlock: 8806060
     },
     SmartChef: {
-        rewardPerBlock: '10',
-        startBlock: 8620481,
-        bonusEndBlock: 8630481
+        rewardPerBlock: '10000000000000000000',
+        startBlock: 8806060,
+        bonusEndBlock: 9006060
     },
 };
 
@@ -25,33 +24,28 @@ module.exports = function (deployer, network) {
     } else if (network === 'bsctestnet') { // binance testnet
       // deploy OniToken
       const oniToken = await deployer.deploy(OniToken, {from: process.env.DEPLOYER_ACCOUNT});
-      // deploy SyrupBar
-      const syrupBar = await deployer.deploy(SyrupBar, oniToken.address, {from: process.env.DEPLOYER_ACCOUNT});
 
       // deploy MasterChef
-      await deployer.deploy(MasterChef,
+      const masterChef = await deployer.deploy(MasterChef,
         oniToken.address,
-        syrupBar.address,
         config.MasterChef.oniPerBlock,
         config.MasterChef.startBlock,
         {from: process.env.DEPLOYER_ACCOUNT}
       );
 
-//  alternatively deploy SmartChef
+      // deploy SmartChef
+      const smartChef = await deployer.deploy(SmartChef,
+       oniToken.address,
+       oniToken.address,
+       config.SmartChef.rewardPerBlock,
+       config.SmartChef.startBlock,
+       config.SmartChef.bonusEndBlock,
+       { from: process.env.DEPLOYER_ACCOUNT }
+       );
 
-//    await deployer.deploy(SmartChef,
-//        SyrupBarInstance.address,
-//        OniTokenInstance.address,
-//        config.SmartChef.rewardPerBlock,
-//        config.SmartChef.startBlock,
-//        config.SmartChef.bonusEndBlock,
-//        { from: process.env.DEPLOYER_ACCOUNT }
-//        );
-//    const SmartChefInstance = await SmartChef.deployed();
-//    await OniTokenInstance.transferOwnership(SmartChefInstance.address, { from: process.env.DEPLOYER_ACCOUNT });
-//    await SyrupBarInstance.transferOwnership(SmartChefInstance.address, { from: process.env.DEPLOYER_ACCOUNT });
-
-
+      await oniToken.mint(process.env.DEPLOYER_ACCOUNT, '1000000000000000000000000', { from: process.env.DEPLOYER_ACCOUNT });
+      await oniToken.mint(smartChef.address, '1000000000000000000000000', { from: process.env.DEPLOYER_ACCOUNT });
+      await oniToken.transferOwnership(masterChef.address, { from: process.env.DEPLOYER_ACCOUNT });
     } else if (network === 'bsc') {
       // do nothing for now
     }
