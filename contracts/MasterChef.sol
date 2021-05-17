@@ -43,6 +43,8 @@ contract MasterChef is Ownable, ReentrancyGuard {
 
     // The ONI TOKEN!
     OniToken public oni;
+    // Dev address.
+    address public devAddr;
     // ONI tokens created per block.
     uint256 public oniPerBlock;
 
@@ -80,13 +82,14 @@ contract MasterChef is Ownable, ReentrancyGuard {
     event Referral(address indexed _user, address indexed _referrer);
     event ReferralPaid(address indexed _user, address indexed _userTo, uint256 _reward);
     event ReferralBonusBpChanged(uint256 _oldBp, uint256 _newBp);
-    event EmissionRateUpdated(address indexed caller, uint256 previousAmount, uint256 newAmount);
 
     constructor(
         OniToken _oni,
+        address _devAddr,
         uint256 _initialEmissionRate,
         uint256 _startBlock
     ) public {
+        devAddr = _devAddr;
         oni = _oni;
         oniPerBlock = _initialEmissionRate;
         startBlock = _startBlock;
@@ -177,6 +180,7 @@ contract MasterChef is Ownable, ReentrancyGuard {
                 .mul(pool.allocPoint)
                 .div(totalAllocPoint);
 
+        oni.mint(devAddr, oniReward.div(10));
         oni.mint(address(this), oniReward);
         pool.accOniPerShare =
             pool.accOniPerShare
@@ -292,34 +296,6 @@ contract MasterChef is Ownable, ReentrancyGuard {
         }
     }
 
-    // Reduce emission rate by 3% every 14,400 blocks ~ 12hours till the emission rate is 0.5 TNDR.
-    // This function can be called publicly.
-    function updateEmissionRate() public {
-        require(block.number > startBlock, "MS: block.number > startBlock");
-        require(oniPerBlock > MINIMUM_EMISSION_RATE, "MS: oniPerBlock > MINIMUM_EMISSION_RATE");
-
-        uint256 currentIndex = block.number.sub(startBlock).div(EMISSION_REDUCTION_PERIOD_BLOCKS);
-        if (currentIndex <= lastReductionPeriodIndex) {
-            return;
-        }
-
-        uint256 newEmissionRate = oniPerBlock;
-        for (uint256 index = lastReductionPeriodIndex; index < currentIndex; ++index) {
-            newEmissionRate = newEmissionRate.mul(1e4 - EMISSION_REDUCTION_RATE_PER_PERIOD).div(1e4);
-        }
-
-        newEmissionRate = newEmissionRate < MINIMUM_EMISSION_RATE ? MINIMUM_EMISSION_RATE : newEmissionRate;
-        if (newEmissionRate >= oniPerBlock) {
-            return;
-        }
-
-        massUpdatePools();
-        lastReductionPeriodIndex = currentIndex;
-        uint256 previousEmissionRate = oniPerBlock;
-        oniPerBlock = newEmissionRate;
-        emit EmissionRateUpdated(msg.sender, previousEmissionRate, newEmissionRate);
-    }
-
     // Set Referral Address for a user
     function setReferral(address _user, address _referrer) internal {
         if (_referrer == address(_referrer) && referrers[_user] == address(0) && _referrer != address(0) && _referrer != _user) {
@@ -355,4 +331,9 @@ contract MasterChef is Ownable, ReentrancyGuard {
         emit ReferralBonusBpChanged(previousRefBonusBP, _newRefBonusBp);
     }
 
+    // Update dev address by the previous dev.
+    function dev(address _devAddr) public {
+        require(msg.sender == devAddr, "MS: wut?");
+        devAddr = _devAddr;
+    }
 }

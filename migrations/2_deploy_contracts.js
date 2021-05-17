@@ -28,6 +28,7 @@ module.exports = function (deployer, network) {
       // deploy MasterChef
       const masterChef = await deployer.deploy(MasterChef,
         oniToken.address,
+        process.env.DEV_ADDRESS,
         config.MasterChef.oniPerBlock,
         config.MasterChef.startBlock,
         {from: process.env.DEPLOYER_ACCOUNT}
@@ -35,17 +36,26 @@ module.exports = function (deployer, network) {
 
       // deploy SmartChef
       const smartChef = await deployer.deploy(SmartChef,
-       oniToken.address,
-       oniToken.address,
-       config.SmartChef.rewardPerBlock,
-       config.SmartChef.startBlock,
-       config.SmartChef.bonusEndBlock,
-       { from: process.env.DEPLOYER_ACCOUNT }
-       );
+        oniToken.address,
+        oniToken.address,
+        config.SmartChef.rewardPerBlock,
+        config.SmartChef.startBlock,
+        config.SmartChef.bonusEndBlock,
+        { from: process.env.DEPLOYER_ACCOUNT }
+      );
 
       await oniToken.mint(process.env.DEPLOYER_ACCOUNT, '1000000000000000000000000', { from: process.env.DEPLOYER_ACCOUNT });
       await oniToken.mint(smartChef.address, '1000000000000000000000000', { from: process.env.DEPLOYER_ACCOUNT });
       await oniToken.transferOwnership(masterChef.address, { from: process.env.DEPLOYER_ACCOUNT });
+
+      const timeLock = await deployer.deploy(Timelock,
+        process.env.DEPLOYER_ACCOUNT,
+        86400 * 2,
+        { from: process.env.DEPLOYER_ACCOUNT }
+      );
+
+      await masterChef.transferOwnership(timeLock.address, { from: process.env.DEPLOYER_ACCOUNT });
+      await smartChef.transferOwnership(timeLock.address, { from: process.env.DEPLOYER_ACCOUNT });
     } else if (network === 'bsc') {
       // do nothing for now
     }
