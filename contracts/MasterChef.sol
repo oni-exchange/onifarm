@@ -224,7 +224,7 @@ contract MasterChef is Ownable, ReentrancyGuard {
         address _referrer
     ) public nonReentrant
     {
-        require(msg.sender != address(_referrer), "MS: Invalid referrer address");
+        require(msg.sender != _referrer, "MS: Invalid referrer address");
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         updatePool(_pid);
@@ -298,7 +298,7 @@ contract MasterChef is Ownable, ReentrancyGuard {
 
     // Set Referral Address for a user
     function setReferral(address _user, address _referrer) internal {
-        if (_referrer == address(_referrer) && referrers[_user] == address(0) && _referrer != address(0) && _referrer != _user) {
+        if (referrers[_user] == address(0) && _referrer != address(0)) {
             referrers[_user] = _referrer;
             referredCount[_referrer] += 1;
             emit Referral(_user, _referrer);
