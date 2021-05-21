@@ -4,8 +4,8 @@
   "main": "index.js",
   "scripts": {
     "testrpc": "ganache-cli --gasLimit 13000000 -e 100000 --networkId 666",
-    "migrate": "truffle migrate --network bsctestnet --reset",
-    "compile": "truffle compile --network bsctestnet",
+    "migrate": "truffle migrate --network bsc --reset",
+    "compile": "truffle compile --network bsc",
     "test": "npx builder test",
     "coverage": "npx builder coverage",
     "verify": "bash ./scripts/verify.sh",

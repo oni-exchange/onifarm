@@ -9,7 +9,7 @@ else
     truffle run verify $1 --network bsctestnet
   else
     if [[ $1 = "all" ]]; then
-      truffle run verify OniToken --network $2
+#      truffle run verify OniToken --network $2
       truffle run verify MasterChef --network $2
       truffle run verify SmartChef --network $2
       truffle run verify Timelock --network $2
